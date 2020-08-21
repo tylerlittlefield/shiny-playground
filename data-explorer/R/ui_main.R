@@ -4,19 +4,21 @@ ui_main <- function() {
     theme = shinytheme("lumen"),
     tabPanel(
       "Data explorer",
-      uiOutput("dat_title"),
       column(
-        width = 8,
-        uiOutput("dat_stats")
+        width = 3,
+        actionButton("change_data_button", "Change dataset", icon("exchange-alt"), width = "100%")
       ),
       column(
-        width = 4,
-        shiny_container(
-          header = "Actions",
-          actionButton("change_data_button", "Change dataset", width = "100%"),
-          actionButton("apply_filters_button", "Apply filters", width = "100%"),
-          actionButton("download_button", "Download", width = "100%")
-        )
+        width = 3,
+        actionButton("apply_filters_button", "Apply filters", icon("filter"), width = "100%")
+      ),
+      column(
+        width = 3,
+        actionButton("rerun_button", "Rerun a report", icon("sync-alt"), width = "100%")
+      ),
+      column(
+        width = 3,
+        actionButton("download_button", "Download", icon("download"), width = "100%")
       ),
       column(
         width = 8,
@@ -35,6 +37,18 @@ ui_main <- function() {
     ),
     tabPanel(
       "About this app"
+    ),
+    footer = column(
+      width = 12,
+      align = "center",
+      tags$p(
+        "Made with 💕 by the",
+        tags$a(
+          "r4fun",
+          href = "https://github.com/r4fun"
+        ),
+        "group"
+      )
     )
   )
 }
