@@ -1,10 +1,21 @@
 function(input, output, session) {
   # ----------------------------------------------------------------------------
+  #' Pretty disconnection screen
+  # ----------------------------------------------------------------------------
+  sever(html = disconnected, bg_color = "white", color = "black")
+
+  # ----------------------------------------------------------------------------
+  #' Waiting screens
+  # ----------------------------------------------------------------------------
+  w <- Waiter$new(html = span("Initialising"))
+
+  # ----------------------------------------------------------------------------
   #' Reactive values
   # ----------------------------------------------------------------------------
   rv <- reactiveValues(
     dat = data.frame(),
     dat_filtered = data.frame(),
+    dat_title = character(),
     filters_on_close = list()
   )
 
@@ -27,7 +38,6 @@ function(input, output, session) {
   # ----------------------------------------------------------------------------
   #' When actionButton is clicked, hide langing page, show main page
   # ----------------------------------------------------------------------------
-  w <- Waiter$new(html = span("Initialising"))
   observeEvent(input$data_button, {
     w$show()
     dat_path <- paste0("data/", input$data_button)
@@ -88,7 +98,7 @@ function(input, output, session) {
         width = "100%"
       ),
       br(), br(),
-      uiOutput("filter_render"),
+      shinycssloaders::withSpinner(uiOutput("filter_render"), 8),
       footer = tagList(
         modalButton("Cancel"),
         actionButton("confirm_filter_modal", "Confirm")
@@ -113,9 +123,7 @@ function(input, output, session) {
     })
   })
 
-  # w_filters <- Waiter$new(id = "filter_render", html = spin_google(), color = transparent(.5))
   observeEvent(input$render_filters_button, {
-    # w_filters$show()
     for (i in names(rv$dat)) {
       if (i %in% input$filter_select) {
         if (is.null(input[[i]])) {
@@ -130,7 +138,6 @@ function(input, output, session) {
         shinyjs::hide(paste0("dd_", i))
       }
     }
-    # w_filters$hide()
   })
 
   # ----------------------------------------------------------------------------
@@ -217,4 +224,42 @@ function(input, output, session) {
       reactable_filter_summary_alt()
     }
   })
+
+  # ----------------------------------------------------------------------------
+  #' Download handler
+  # ----------------------------------------------------------------------------
+  output$download_button <- downloadHandler(
+    filename = function() {
+      paste0(rv$dat_title, "-", Sys.Date(), ".xlsx", sep="")
+    },
+    content = function(file) {
+      shiny::withProgress(
+        message = "Downloading report!",
+        detail = "Please bear with us while we gather the data 🙏",
+        value = 0, {
+          raw_data <- rv$dat_filtered
+          user_summary <- dat_filter_summary()
+          dev_summary <- dat_filter_summary() %>%
+            mutate_all(as.character) %>%
+            bind_rows(tibble(
+              Filter = "r4fun_dataset",
+              Filter.Value = input$data_button
+            ))
+
+          incProgress(4/10)
+          wb <- createWorkbook()
+          addWorksheet(wb, "Raw Data")
+          addWorksheet(wb, "Filter Summary")
+          addWorksheet(wb, "DO NOT EDIT", visible = FALSE)
+
+          writeData(wb, "Raw Data", raw_data)
+          writeData(wb, "Filter Summary", user_summary)
+          writeData(wb, "DO NOT EDIT", dev_summary)
+
+          protectWorksheet(wb, "DO NOT EDIT")
+          saveWorkbook(wb, file)
+        }
+      )
+    }
+  )
 }

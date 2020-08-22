@@ -18,13 +18,13 @@ ui_main <- function() {
       ),
       column(
         width = 3,
-        actionButton("download_button", "Download", icon("download"), width = "100%")
+        downloadButton("download_button", "Download", style = "width:100%;")
       ),
       column(
         width = 8,
         shiny_container(
           "Data",
-          reactableOutput("data_table")
+          shinycssloaders::withSpinner(reactableOutput("data_table"), type = 8)
         )
       ),
       column(
@@ -41,14 +41,7 @@ ui_main <- function() {
     footer = column(
       width = 12,
       align = "center",
-      tags$p(
-        "Made with 💕 by the",
-        tags$a(
-          "r4fun",
-          href = "https://github.com/r4fun"
-        ),
-        "group"
-      )
+      tags$p("Made with 💕 by the", tags$a("r4fun", href = "https://github.com/r4fun"), "group")
     )
   )
 }
