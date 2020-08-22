@@ -16,7 +16,8 @@ function(input, output, session) {
     dat = data.frame(),
     dat_filtered = data.frame(),
     dat_title = character(),
-    filters_on_close = list()
+    filters_on_close = list(),
+    dat_rerun = data.frame()
   )
 
   # ----------------------------------------------------------------------------
@@ -47,7 +48,95 @@ function(input, output, session) {
   })
 
   # ----------------------------------------------------------------------------
-  #' When actionButton is hit, hide landing page, show main page, remove modal
+  #' When actionButton is clicked, hide langing page, show main page
+  # ----------------------------------------------------------------------------
+  observeEvent(input$rerun_button, {
+    showModal(modalDialog(
+      title = "Rerun a previous report",
+      tags$p(
+        "You have two options:",
+        tags$ul(
+          tags$li(tags$strong("Rerun and download"), ": This will identify the filter criteria and download a new report"),
+          tags$li(tags$strong("Rerun and modify"), ": This will identify and set the filter criteria for further modifications")
+        )
+      ),
+      actionButton(
+        inputId = "rerun_download_button",
+        label = "Rerun and download",
+        icon = icon("download"),
+        width = "100%"
+      ),
+      actionButton(
+        inputId = "rerun_modify_button",
+        label = "Rerun and modify",
+        icon = icon("edit"),
+        width = "100%"
+      )
+    ))
+  })
+
+  # ----------------------------------------------------------------------------
+  #' When rerun_download_button is clicked, show modal to upload old report
+  # ----------------------------------------------------------------------------
+  observeEvent(input$rerun_download_button, {
+    showModal(modalDialog(
+      title = "Rerun and download",
+      fileInput(
+        inputId = "file_upload",
+        label = "Please upload a previously downloaded report",
+        accept = ".xlsx",
+        width = "100%"
+      ),
+      shinyjs::disabled(downloadButton(
+        outputId = "rerun_download_to_disk_button",
+        label = "Download",
+        width = "100%"
+      ))
+    ))
+  })
+
+  observeEvent(input$file_upload, {
+    # browser()
+    file <- input$file_upload
+    ext <- tools::file_ext(file$datapath)
+
+    req(file)
+    validate(need(ext == "xlsx", "Please upload a xlsx file"))
+
+    sheets <- getSheetNames(file$datapath)
+    user_upload <- lapply(sheets, function(x) {
+      read.xlsx(file$datapath, sheet = x)
+    })
+    names(user_upload) <- sheets
+
+    dev_summary <- user_upload$`DO NOT EDIT`
+    dataset <- dev_summary[dev_summary$Filter == "r4fun_dataset", ]$Filter.Value
+    dat_title <- tools::file_path_sans_ext(dataset)
+    report_filters <- dev_summary[dev_summary$Filter != "r4fun_dataset", ]
+    report_filters_split <- split(report_filters, report_filters$Filter)
+
+    server_upload <- readRDS(paste0("data/", dataset))
+    for (i in seq_along(report_filters_split)) {
+      x <- report_filters_split[[i]]
+      col <- unique(x$Filter)
+      vals <- unique(x$Filter.Value)
+      server_upload <- server_upload[server_upload[[col]] %in% vals, ]
+    }
+
+    shinyjs::enable("rerun_download_to_disk_button")
+
+    rv$dat_rerun <- list(
+      data = prepare_download(
+        raw_data = server_upload,
+        user_summary = user_upload$`Filter Summary`,
+        data_button = dataset
+      ),
+      filename = paste0(dat_title, "-RERUN-", Sys.Date(), ".xlsx", sep="")
+    )
+  })
+
+  # ----------------------------------------------------------------------------
+  #' When data is loaded, hide landing page, show main page, remove modal
   # ----------------------------------------------------------------------------
   observeEvent(rv$dat, {
     shinyjs::hide("ui_landing")
@@ -237,27 +326,31 @@ function(input, output, session) {
         message = "Downloading report!",
         detail = "Please bear with us while we gather the data 🙏",
         value = 0, {
-          raw_data <- rv$dat_filtered
-          user_summary <- dat_filter_summary()
-          dev_summary <- dat_filter_summary() %>%
-            mutate_all(as.character) %>%
-            bind_rows(tibble(
-              Filter = "r4fun_dataset",
-              Filter.Value = input$data_button
-            ))
+          out <- prepare_download(
+            raw_data = rv$dat_filtered,
+            user_summary = dat_filter_summary(),
+            data_button = input$data_button
+          )
 
-          incProgress(4/10)
-          wb <- createWorkbook()
-          addWorksheet(wb, "Raw Data")
-          addWorksheet(wb, "Filter Summary")
-          addWorksheet(wb, "DO NOT EDIT", visible = FALSE)
+          saveWorkbook(out, file)
+        }
+      )
+    }
+  )
 
-          writeData(wb, "Raw Data", raw_data)
-          writeData(wb, "Filter Summary", user_summary)
-          writeData(wb, "DO NOT EDIT", dev_summary)
-
-          protectWorksheet(wb, "DO NOT EDIT")
-          saveWorkbook(wb, file)
+  output$rerun_download_to_disk_button <- downloadHandler(
+    filename = function() {
+      rv$dat_rerun$filename
+    },
+    content = function(file) {
+      shiny::withProgress(
+        message = "Downloading report!",
+        detail = "Please bear with us while we gather the data 🙏",
+        value = 0, {
+          saveWorkbook(
+            rv$dat_rerun$data,
+            file
+          )
         }
       )
     }
